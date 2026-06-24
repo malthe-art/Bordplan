@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+<title>Bordplan</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+  button { cursor: pointer; font-family: inherit; }
+  button:disabled { cursor: not-allowed; opacity: 0.4; }
+  input, textarea { font-family: inherit; }
+  ::-webkit-scrollbar { width: 6px; }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/*
+  ------------------------------------------------------------------
+  DELT DATA (uden konto / uden login)
+  ------------------------------------------------------------------
+  Denne fil bruger jsonblob.com som en gratis, anonym "datakasse" på
+  nettet, så alle elevers svar samles ét sted og kan ses af læreren.
+
+  Sådan virker det i praksis:
+  1. Første gang SIDEN BLIVER ÅBNET NOGET STED uden et bestemt id i
+     URL'en (#blob=...), opretter siden automatisk en ny, tom "blob"
+     og smider et id ind i adresselinjen (efter #blob=).
+  2. Det id SKAL du som lærer gemme og bruge i det link, du sender
+     til eleverne - ellers får alle deres helt egen, tomme udgave,
+     og ingenting bliver delt.
+  3. Praktisk fremgangsmåde:
+     a. Læg denne fil op på din hjemmeside (f.eks. som bordplan.html).
+     b. Åbn siden én gang selv. Kig i adresselinjen - der står nu
+        noget i stil med:  https://dinside.dk/bordplan.html#blob=abcd1234
+     c. DET link (med #blob=... og alt) er det, du sender til hele
+        klassen. Alle der åbner præcis dét link, deler samme data.
+  ------------------------------------------------------------------
+*/
+
+const JSONBLOB_BASE = "https://jsonblob.com/api/jsonBlob";
+
+function getBlobIdFromUrl() {
+  const match = window.location.hash.match(/blob=([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+}
+
+function setBlobIdInUrl(id) {
+  window.location.hash = `blob=${id}`;
+}
+
+const DEFAULT_DATA = {
+  names: [],
+  tableCount: 12,
+  requests: {},
+  plan: null,
+  teacherCode: "1234",
+};
+
+// Simpel in-memory cache + debounce, så vi ikke spammer jsonblob ved hver tastetryk.
+let pendingSave = null;
+let saveTimer = null;
+
+async function createBlob(data) {
+  const res = await fetch(JSONBLOB_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const location = res.headers.get("Location");
+  const id = location ? location.split("/").pop() : null;
+  return id;
+}
+
+async function fetchBlob(id) {
+  const res = await fetch(`${JSONBLOB_BASE}/${id}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error("blob not found");
+  return res.json();
+}
+
+async function saveBlob(id, data) {
+  pendingSave = data;
+  if (saveTimer) return; // already scheduled
+  saveTimer = setTimeout(async () => {
+    const toSave = pendingSave;
+    pendingSave = null;
+    saveTimer = null;
+    try {
+      await fetch(`${JSONBLOB_BASE}/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toSave),
+      });
+    } catch (e) {
+      console.error("Kunne ikke gemme:", e);
+    }
+  }, 500);
+}
+
+const COLORS = {
+  bg: "#FAF6EE",
+  ink: "#2F4538",
+  inkSoft: "#5C6B5E",
+  card: "#FFFFFF",
+  line: "#E4DCC8",
+  want: "#E8836B",
+  wantBg: "#FBE6DD",
+  avoid: "#C75450",
+  avoidBg: "#F7DEDC",
+  accent: "#D9A441",
+};
+
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+function App() {
+  const [blobId, setBlobId] = useState(null);
+  const [status, setStatus] = useState("init"); // init | creating | ready | error
+  const [view, setView] = useState("home");
+
+  const [names, setNames] = useState([]);
+  const [tableCount, setTableCount] = useState(12);
+  const [requests, setRequests] = useState({});
+  const [plan, setPlan] = useState(null);
+  const [teacherCode, setTeacherCode] = useState("1234");
+
+  const dataRef = useRef(DEFAULT_DATA);
+  const pollRef = useRef(null);
+  const skipNextSave = useRef(false);
+
+  // ---- Init: find or create blob ----
+  useEffect(() => {
+    (async () => {
+      let id = getBlobIdFromUrl();
+      if (!id) {
+        setStatus("creating");
+        try {
+          id = await createBlob(DEFAULT_DATA);
+          setBlobIdInUrl(id);
+        } catch (e) {
+          setStatus("error");
+          return;
+        }
+      }
+      setBlobId(id);
+      try {
+        const data = await fetchBlob(id);
+        applyData(data);
+        setStatus("ready");
+      } catch (e) {
+        // blob id in URL doesn't exist (maybe deleted) -> create fresh
+        try {
+          const newId = await createBlob(DEFAULT_DATA);
+          setBlobIdInUrl(newId);
+          setBlobId(newId);
+          setStatus("ready");
+        } catch (e2) {
+          setStatus("error");
+        }
+      }
+    })();
+  }, []);
+
+  function applyData(data) {
+    skipNextSave.current = true;
+    setNames(data.names || []);
+    setTableCount(data.tableCount ?? 12);
+    setRequests(data.requests || {});
+    setPlan(data.plan ?? null);
+    setTeacherCode(data.teacherCode || "1234");
+    dataRef.current = data;
+  }
+
+  // ---- Poll for changes every 4s so multiple phones stay in sync ----
+  useEffect(() => {
+    if (status !== "ready" || !blobId) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const data = await fetchBlob(blobId);
+        // Only apply if it actually differs to avoid jitter while typing
+        const incoming = JSON.stringify(data);
+        const current = JSON.stringify(dataRef.current);
+        if (incoming !== current) {
+          applyData(data);
+        }
+      } catch (e) {
+        // ignore transient errors
+      }
+    }, 6000);
+    return () => clearInterval(pollRef.current);
+  }, [status, blobId]);
+
+  // ---- Save on change ----
+  useEffect(() => {
+    if (status !== "ready" || !blobId) return;
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    const data = { names, tableCount, requests, plan, teacherCode };
+    dataRef.current = data;
+    saveBlob(blobId, data);
+  }, [names, tableCount, requests, plan, teacherCode, status, blobId]);
+
+  if (status === "init" || status === "creating") {
+    return (
+      <div style={styles.appShell}>
+        <div style={{ padding: 40, color: COLORS.inkSoft }}>Henter…</div>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div style={styles.appShell}>
+        <div style={{ padding: 40, color: COLORS.avoid }}>
+          Kunne ikke oprette forbindelse til den delte database. Tjek din
+          internetforbindelse og genindlæs siden.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.appShell}>
+      {view === "home" && <Home onPick={setView} teacherCode={teacherCode} />}
+      {view === "student" && (
+        <StudentView
+          names={names}
+          setNames={setNames}
+          requests={requests}
+          setRequests={setRequests}
+          onBack={() => setView("home")}
+        />
+      )}
+      {view === "teacher" && (
+        <TeacherView
+          names={names}
+          setNames={setNames}
+          requests={requests}
+          setRequests={setRequests}
+          tableCount={tableCount}
+          setTableCount={setTableCount}
+          plan={plan}
+          setPlan={setPlan}
+          teacherCode={teacherCode}
+          setTeacherCode={setTeacherCode}
+          onBack={() => setView("home")}
+        />
+      )}
+    </div>
+  );
+}
+
+function Home({ onPick, teacherCode }) {
+  const [showCodeEntry, setShowCodeEntry] = useState(false);
+  const [code, setCode] = useState("");
+  const [error, setError] = useState(false);
+
+  function tryEnterTeacher() {
+    if (code.trim() === teacherCode) {
+      setShowCodeEntry(false);
+      setCode("");
+      setError(false);
+      onPick("teacher");
+    } else {
+      setError(true);
+    }
+  }
+
+  return (
+    <div style={styles.homeWrap}>
+      <div style={styles.homeHeader}>
+        <div style={styles.kicker}>Bordplan</div>
+        <h1 style={styles.h1}>Find din plads</h1>
+        <p style={styles.lede}>
+          Skriv hvem du har lyst til at sidde ved siden af — og hvem der måske
+          skal sidde et andet sted. Læreren laver bordplanen ud fra alle ønsker.
+        </p>
+      </div>
+      <div style={styles.homeCards}>
+        <button style={styles.bigCard} onClick={() => onPick("student")}>
+          <div style={styles.bigCardIcon}>✎</div>
+          <div style={styles.bigCardTitle}>Jeg er elev</div>
+          <div style={styles.bigCardSub}>Skriv dine ønsker</div>
+        </button>
+
+        {!showCodeEntry ? (
+          <button
+            style={{ ...styles.bigCard, background: COLORS.ink, color: COLORS.bg }}
+            onClick={() => setShowCodeEntry(true)}
+          >
+            <div style={styles.bigCardIcon}>☰</div>
+            <div style={{ ...styles.bigCardTitle, color: COLORS.bg }}>Jeg er lærer</div>
+            <div style={{ ...styles.bigCardSub, color: "#C9D4CB" }}>Kræver kode</div>
+          </button>
+        ) : (
+          <div style={{ ...styles.bigCard, background: COLORS.ink }}>
+            <div style={{ ...styles.bigCardTitle, color: COLORS.bg, marginBottom: 10 }}>
+              Indtast lærer-kode
+            </div>
+            <input
+              autoFocus
+              type="password"
+              inputMode="numeric"
+              style={{ ...styles.input, marginBottom: 8 }}
+              value={code}
+              onChange={(e) => { setCode(e.target.value); setError(false); }}
+              onKeyDown={(e) => e.key === "Enter" && tryEnterTeacher()}
+              placeholder="Kode"
+            />
+            {error && (
+              <div style={{ color: "#F0A8A0", fontSize: 13, marginBottom: 8 }}>
+                Forkert kode, prøv igen.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={styles.primaryBtnSmall} onClick={tryEnterTeacher}>Log ind</button>
+              <button
+                style={{ ...styles.secondaryBtn, marginTop: 0 }}
+                onClick={() => { setShowCodeEntry(false); setCode(""); setError(false); }}
+              >
+                Annuller
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- STUDENT VIEW ---------------- */
+
+function StudentView({ names, setNames, requests, setRequests, onBack }) {
+  const [studentId, setStudentId] = useState(null);
+  const [wants, setWants] = useState([]);
+  const [avoids, setAvoids] = useState([]);
+  const [submitted, setSubmitted] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const me = names.find((n) => n.id === studentId);
+  const others = names.filter((n) => n.id !== studentId);
+
+  function addSelfIfMissing() {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const existing = names.find((n) => n.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      setStudentId(existing.id);
+      return;
+    }
+    const id = uid();
+    setNames([...names, { id, name: trimmed }]);
+    setStudentId(id);
+  }
+
+  function toggle(list, setList, otherList, setOtherList, id) {
+    setOtherList(otherList.filter((x) => x !== id));
+    if (list.includes(id)) {
+      setList(list.filter((x) => x !== id));
+    } else {
+      if (list.length >= 3) return;
+      setList([...list, id]);
+    }
+  }
+
+  function submit() {
+    setRequests({ ...requests, [studentId]: { wants, avoids } });
+    setSubmitted(true);
+  }
+
+  if (!studentId) {
+    return (
+      <div style={styles.screen}>
+        <TopBar onBack={onBack} title="Hvem er du?" />
+        <div style={styles.section}>
+          <p style={styles.helpText}>
+            Find dit navn på listen, eller skriv det hvis det ikke er der.
+          </p>
+          <div style={styles.nameGrid}>
+            {names.map((n) => (
+              <button key={n.id} style={styles.nameChip} onClick={() => setStudentId(n.id)}>
+                {n.name}
+              </button>
+            ))}
+          </div>
+          <div style={styles.addRow}>
+            <input
+              style={styles.input}
+              placeholder="Skriv dit navn"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addSelfIfMissing()}
+            />
+            <button style={styles.primaryBtnSmall} onClick={addSelfIfMissing}>Fortsæt</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div style={styles.screen}>
+        <TopBar onBack={onBack} title="Sendt!" />
+        <div style={styles.centerMsg}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>✓</div>
+          <div style={styles.h2}>Tak, {me.name}!</div>
+          <p style={styles.helpText}>
+            Dine ønsker er gemt. Læreren laver bordplanen, når alle har svaret.
+          </p>
+          <button
+            style={styles.secondaryBtn}
+            onClick={() => {
+              setSubmitted(false);
+              setWants(requests[studentId]?.wants || []);
+              setAvoids(requests[studentId]?.avoids || []);
+            }}
+          >
+            Ret mine svar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.screen}>
+      <TopBar onBack={onBack} title={`Hej, ${me.name}`} />
+      <div style={styles.section}>
+        {others.length === 0 ? (
+          <div style={styles.hint}>
+            Der er endnu ikke tilføjet andre elever på listen, så du kan ikke
+            vælge nogen lige nu. Spørg din lærer om at tilføje hele klassen
+            først, eller bed dine klassekammerater om at finde deres eget navn
+            via "Hvem er du?" — så dukker de op her automatisk.
+          </div>
+        ) : (
+          <React.Fragment>
+            <div style={styles.questionBlock}>
+              <div style={styles.qLabel}>
+                Hvem vil du gerne sidde tæt på? <span style={styles.qMax}>(vælg op til 3, i den orden du har mest lyst)</span>
+              </div>
+              {wants.length > 0 && (
+                <div style={styles.priorityHint}>
+                  1. {names.find((n) => n.id === wants[0])?.name} er dit
+                  vigtigste ønske — tryk en valgt person igen for at fjerne
+                  den og vælge i en anden orden.
+                </div>
+              )}
+              <div style={styles.peopleGrid}>
+                {others.map((n) => {
+                  const priority = wants.indexOf(n.id);
+                  return (
+                    <button
+                      key={n.id}
+                      style={{
+                        ...styles.personChip,
+                        ...(priority !== -1 ? styles.personChipWant : {}),
+                        ...(avoids.includes(n.id) ? styles.personChipDimmed : {}),
+                      }}
+                      disabled={avoids.includes(n.id)}
+                      onClick={() => toggle(wants, setWants, avoids, setAvoids, n.id)}
+                    >
+                      {priority !== -1 && <span style={styles.priorityBadge}>{priority + 1}</span>}
+                      {n.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={styles.questionBlock}>
+              <div style={styles.qLabel}>
+                Er der nogen du ikke vil sidde ved siden af? <span style={styles.qMax}>(valgfrit)</span>
+              </div>
+              <div style={styles.peopleGrid}>
+                {others.map((n) => (
+                  <button
+                    key={n.id}
+                    style={{
+                      ...styles.personChip,
+                      ...(avoids.includes(n.id) ? styles.personChipAvoid : {}),
+                      ...(wants.includes(n.id) ? styles.personChipDimmed : {}),
+                    }}
+                    disabled={wants.includes(n.id)}
+                    onClick={() => toggle(avoids, setAvoids, wants, setWants, n.id)}
+                  >
+                    {n.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button style={styles.primaryBtn} onClick={submit}>Send mine ønsker</button>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- TEACHER VIEW ---------------- */
+
+function TeacherView({
+  names, setNames, requests, setRequests,
+  tableCount, setTableCount, plan, setPlan,
+  teacherCode, setTeacherCode, onBack,
+}) {
+  const [tab, setTab] = useState("overview");
+  const [bulkNames, setBulkNames] = useState("");
+  const [oldCodeInput, setOldCodeInput] = useState("");
+  const [newCodeInput, setNewCodeInput] = useState("");
+  const [codeMsg, setCodeMsg] = useState(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  function changeCode() {
+    if (oldCodeInput.trim() !== teacherCode) {
+      setCodeMsg({ type: "error", text: "Den gamle kode er forkert." });
+      return;
+    }
+    const trimmedNew = newCodeInput.trim();
+    if (!trimmedNew) {
+      setCodeMsg({ type: "error", text: "Skriv en ny kode." });
+      return;
+    }
+    setTeacherCode(trimmedNew);
+    setOldCodeInput("");
+    setNewCodeInput("");
+    setCodeMsg({ type: "success", text: "Koden er ændret." });
+  }
+
+  const answeredCount = Object.keys(requests).length;
+
+  function addBulkNames() {
+    const lines = bulkNames.split("\n").map((l) => l.trim()).filter(Boolean);
+    const existingLower = new Set(names.map((n) => n.name.toLowerCase()));
+    const fresh = lines
+      .filter((l) => !existingLower.has(l.toLowerCase()))
+      .map((l) => ({ id: uid(), name: l }));
+    setNames([...names, ...fresh]);
+    setBulkNames("");
+  }
+
+  function removeName(id) {
+    setNames(names.filter((n) => n.id !== id));
+    const r = { ...requests };
+    delete r[id];
+    Object.keys(r).forEach((k) => {
+      r[k] = {
+        wants: (r[k].wants || []).filter((x) => x !== id),
+        avoids: (r[k].avoids || []).filter((x) => x !== id),
+      };
+    });
+    setRequests(r);
+  }
+
+  function runAlgorithm() {
+    const newPlan = computeSeating(names, requests, tableCount);
+    setPlan(newPlan);
+    setTab("plan");
+  }
+
+  function swapStudents(tableIdxA, seatA, tableIdxB, seatB) {
+    const next = plan.map((t) => [...t]);
+    const tmp = next[tableIdxA][seatA];
+    next[tableIdxA][seatA] = next[tableIdxB][seatB];
+    next[tableIdxB][seatB] = tmp;
+    setPlan(next);
+  }
+
+  function copyShareLink() {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div style={styles.screen}>
+      <TopBar onBack={onBack} title="Lærer-visning" />
+      <div style={styles.tabRow}>
+        {[
+          ["overview", "Status"],
+          ["names", "Elever"],
+          ["plan", "Bordplan"],
+          ["settings", "Kode"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            style={{ ...styles.tabBtn, ...(tab === key ? styles.tabBtnActive : {}) }}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div style={styles.section}>
+          <div style={styles.fieldBlock}>
+            <label style={styles.fieldLabel}>Del med klassen</label>
+            <div style={styles.hint}>
+              Send dette nøjagtige link til alle elever. Alle der åbner det,
+              deler samme bordplan.
+            </div>
+            <button style={styles.secondaryBtn} onClick={copyShareLink}>
+              {linkCopied ? "Linket er kopieret ✓" : "Kopiér link til klassen"}
+            </button>
+          </div>
+
+          <div style={styles.statRow}>
+            <Stat label="Elever" value={names.length} />
+            <Stat label="Har svaret" value={answeredCount} />
+            <Stat label="Borde" value={tableCount} />
+          </div>
+
+          <div style={styles.fieldBlock}>
+            <label style={styles.fieldLabel}>Antal borde (2 pladser pr. bord)</label>
+            <input
+              type="number"
+              min={1}
+              style={styles.input}
+              value={tableCount}
+              onChange={(e) => setTableCount(Math.max(1, Number(e.target.value) || 0))}
+            />
+            <div style={styles.hint}>
+              Plads til {tableCount * 2} elever — du har {names.length} elever på listen.
+            </div>
+          </div>
+
+          <button style={styles.primaryBtn} onClick={runAlgorithm} disabled={names.length === 0}>
+            {plan ? "Lav bordplan igen" : "Lav bordplan"}
+          </button>
+          {names.length === 0 && <div style={styles.hint}>Tilføj elever under "Elever" først.</div>}
+        </div>
+      )}
+
+      {tab === "names" && (
+        <div style={styles.section}>
+          <div style={styles.fieldBlock}>
+            <label style={styles.fieldLabel}>Tilføj flere navne (ét pr. linje)</label>
+            <textarea
+              style={{ ...styles.input, height: 90, fontFamily: "inherit" }}
+              value={bulkNames}
+              onChange={(e) => setBulkNames(e.target.value)}
+              placeholder={"Anna\nMads\nSofie..."}
+            />
+            <button style={styles.secondaryBtn} onClick={addBulkNames}>Tilføj navne</button>
+          </div>
+
+          <div style={styles.listWrap}>
+            {names.map((n) => {
+              const answered = !!requests[n.id];
+              return (
+                <div key={n.id} style={styles.listRow}>
+                  <span>{n.name}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        ...styles.badge,
+                        background: answered ? "#E4EEE0" : "#F2EFE6",
+                        color: answered ? "#3C6B3A" : COLORS.inkSoft,
+                      }}
+                    >
+                      {answered ? "Svaret" : "Mangler"}
+                    </span>
+                    <button style={styles.removeBtn} onClick={() => removeName(n.id)}>✕</button>
+                  </div>
+                </div>
+              );
+            })}
+            {names.length === 0 && <div style={styles.hint}>Ingen elever tilføjet endnu.</div>}
+          </div>
+        </div>
+      )}
+
+      {tab === "plan" && (
+        <PlanTab plan={plan} names={names} requests={requests} onSwap={swapStudents} />
+      )}
+
+      {tab === "settings" && (
+        <div style={styles.section}>
+          <div style={styles.fieldBlock}>
+            <label style={styles.fieldLabel}>Skift lærer-kode</label>
+            <div style={styles.hint}>
+              Skriv den nuværende kode og derefter den nye kode, du vil bruge fremover.
+            </div>
+          </div>
+
+          <div style={styles.fieldBlock}>
+            <label style={styles.fieldLabel}>Nuværende kode</label>
+            <input
+              type="password"
+              inputMode="numeric"
+              style={styles.input}
+              value={oldCodeInput}
+              onChange={(e) => { setOldCodeInput(e.target.value); setCodeMsg(null); }}
+              placeholder="F.eks. 1234"
+            />
+          </div>
+
+          <div style={styles.fieldBlock}>
+            <label style={styles.fieldLabel}>Ny kode</label>
+            <input
+              type="password"
+              inputMode="numeric"
+              style={styles.input}
+              value={newCodeInput}
+              onChange={(e) => { setNewCodeInput(e.target.value); setCodeMsg(null); }}
+              placeholder="Vælg en ny kode"
+            />
+          </div>
+
+          {codeMsg && (
+            <div style={{ fontSize: 13, marginBottom: 12, color: codeMsg.type === "error" ? COLORS.avoid : "#3C6B3A", fontWeight: 600 }}>
+              {codeMsg.text}
+            </div>
+          )}
+
+          <button style={styles.primaryBtn} onClick={changeCode}>Skift kode</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanTab({ plan, names, requests, onSwap }) {
+  const [selected, setSelected] = useState(null);
+
+  const nameById = useMemo(() => {
+    const m = {};
+    names.forEach((n) => (m[n.id] = n.name));
+    return m;
+  }, [names]);
+
+  if (!plan) {
+    return (
+      <div style={styles.section}>
+        <div style={styles.hint}>
+          Der er ikke lavet en bordplan endnu. Gå til "Status" og tryk "Lav bordplan".
+        </div>
+      </div>
+    );
+  }
+
+  const score = scorePlan(plan, requests);
+
+  function handleSeatClick(tableIdx, seat) {
+    if (!selected) {
+      setSelected({ tableIdx, seat });
+      return;
+    }
+    if (selected.tableIdx === tableIdx && selected.seat === seat) {
+      setSelected(null);
+      return;
+    }
+    onSwap(selected.tableIdx, selected.seat, tableIdx, seat);
+    setSelected(null);
+  }
+
+  function isHappy(id, tableIdx) {
+    const req = requests[id];
+    if (!req) return null;
+    const tableMate = plan[tableIdx].find((x) => x !== id);
+    if (!tableMate) return null;
+    const wantIdx = req.wants?.indexOf(tableMate);
+    if (wantIdx !== undefined && wantIdx !== -1) return { type: "want", priority: wantIdx + 1 };
+    if (req.avoids?.includes(tableMate)) return { type: "avoid" };
+    return null;
+  }
+
+  return (
+    <div style={styles.section}>
+      <div style={styles.scoreRow}>
+        <Stat label="Ønsker opfyldt" value={`${score.wantsMet}/${score.wantsTotal}`} />
+        <Stat label="Konflikter" value={score.avoidsBroken} />
+      </div>
+      <div style={styles.hint}>Tryk på en elev, og tryk på en anden for at bytte plads.</div>
+
+      <div style={styles.tablesGrid}>
+        {plan.map((table, tableIdx) => (
+          <div key={tableIdx} style={styles.tableCard}>
+            <div style={styles.tableCardLabel}>Bord {tableIdx + 1}</div>
+            <div style={styles.tableSeats}>
+              {[0, 1].map((seat) => {
+                const id = table[seat];
+                const happy = id ? isHappy(id, tableIdx) : null;
+                const isSelected = selected && selected.tableIdx === tableIdx && selected.seat === seat;
+                return (
+                  <button
+                    key={seat}
+                    style={{
+                      ...styles.seatBtn,
+                      ...(isSelected ? styles.seatBtnSelected : {}),
+                      ...(happy?.type === "want" ? styles.seatBtnWant : {}),
+                      ...(happy?.type === "avoid" ? styles.seatBtnAvoid : {}),
+                    }}
+                    onClick={() => id && handleSeatClick(tableIdx, seat)}
+                  >
+                    {id ? nameById[id] : "—"}
+                    {happy?.type === "want" && <span style={styles.seatIcon}>♥{happy.priority}</span>}
+                    {happy?.type === "avoid" && <span style={styles.seatIcon}>!</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div style={styles.statBox}>
+      <div style={styles.statValue}>{value}</div>
+      <div style={styles.statLabel}>{label}</div>
+    </div>
+  );
+}
+
+function TopBar({ onBack, title }) {
+  return (
+    <div style={styles.topBar}>
+      <button style={styles.backBtn} onClick={onBack}>←</button>
+      <div style={styles.topBarTitle}>{title}</div>
+      <div style={{ width: 32 }} />
+    </div>
+  );
+}
+
+/* ---------------- ALGORITHM ---------------- */
+
+function computeSeating(names, requests, tableCount) {
+  const ids = names.map((n) => n.id);
+
+  let tables = [];
+  const shuffled = [...ids].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < tableCount; i++) {
+    const a = shuffled[i * 2] ?? null;
+    const b = shuffled[i * 2 + 1] ?? null;
+    tables.push([a, b]);
+  }
+
+  function pairScore(a, b) {
+    if (a == null || b == null) return 0;
+    let s = 0;
+    const ra = requests[a];
+    const rb = requests[b];
+    const wantPoints = [6, 4, 2];
+
+    const aWantsIdx = ra?.wants?.indexOf(b);
+    if (aWantsIdx !== undefined && aWantsIdx !== -1) s += wantPoints[aWantsIdx] ?? 2;
+    const bWantsIdx = rb?.wants?.indexOf(a);
+    if (bWantsIdx !== undefined && bWantsIdx !== -1) s += wantPoints[bWantsIdx] ?? 2;
+    if (ra?.avoids?.includes(b)) s -= 12;
+    if (rb?.avoids?.includes(a)) s -= 12;
+    return s;
+  }
+
+  let improved = true;
+  let iterations = 0;
+  const maxIterations = 4000;
+
+  while (improved && iterations < maxIterations) {
+    improved = false;
+    iterations++;
+    for (let t1 = 0; t1 < tables.length; t1++) {
+      for (let s1 = 0; s1 < 2; s1++) {
+        for (let t2 = t1; t2 < tables.length; t2++) {
+          for (let s2 = t2 === t1 ? s1 + 1 : 0; s2 < 2; s2++) {
+            const before =
+              pairScore(tables[t1][0], tables[t1][1]) +
+              (t2 !== t1 ? pairScore(tables[t2][0], tables[t2][1]) : 0);
+
+            const tmp = tables[t1][s1];
+            tables[t1][s1] = tables[t2][s2];
+            tables[t2][s2] = tmp;
+
+            const after =
+              pairScore(tables[t1][0], tables[t1][1]) +
+              (t2 !== t1 ? pairScore(tables[t2][0], tables[t2][1]) : 0);
+
+            if (after > before) {
+              improved = true;
+            } else {
+              const tmp2 = tables[t1][s1];
+              tables[t1][s1] = tables[t2][s2];
+              tables[t2][s2] = tmp2;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return tables;
+}
+
+function scorePlan(plan, requests) {
+  let wantsTotal = 0;
+  let wantsMet = 0;
+  let avoidsBroken = 0;
+
+  Object.entries(requests).forEach(([id, req]) => {
+    const table = plan.find((t) => t.includes(id));
+    const mate = table ? table.find((x) => x !== id) : null;
+    (req.wants || []).forEach((w) => {
+      wantsTotal++;
+      if (mate === w) wantsMet++;
+    });
+    (req.avoids || []).forEach((a) => {
+      if (mate === a) avoidsBroken++;
+    });
+  });
+
+  return { wantsTotal, wantsMet, avoidsBroken };
+}
+
+/* ---------------- STYLES ---------------- */
+
+const styles = {
+  appShell: { fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", background: COLORS.bg, minHeight: "100vh", color: COLORS.ink },
+  homeWrap: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "32px 20px", maxWidth: 480, margin: "0 auto" },
+  homeHeader: { marginBottom: 32 },
+  kicker: { fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: COLORS.accent, fontWeight: 700, marginBottom: 8 },
+  h1: { fontSize: 32, margin: "0 0 12px 0", lineHeight: 1.1 },
+  lede: { fontSize: 15, color: COLORS.inkSoft, lineHeight: 1.5, margin: 0 },
+  homeCards: { display: "flex", flexDirection: "column", gap: 14 },
+  bigCard: { border: `1px solid ${COLORS.line}`, background: COLORS.card, borderRadius: 16, padding: "24px 20px", textAlign: "left", display: "flex", flexDirection: "column", gap: 4 },
+  bigCardIcon: { fontSize: 22, marginBottom: 6 },
+  bigCardTitle: { fontSize: 19, fontWeight: 700 },
+  bigCardSub: { fontSize: 13, color: COLORS.inkSoft },
+
+  screen: { maxWidth: 520, margin: "0 auto", minHeight: "100vh", paddingBottom: 40 },
+  topBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 16px 12px", position: "sticky", top: 0, background: COLORS.bg, zIndex: 5, borderBottom: `1px solid ${COLORS.line}` },
+  backBtn: { border: "none", background: "transparent", fontSize: 20, color: COLORS.ink, width: 32 },
+  topBarTitle: { fontWeight: 700, fontSize: 16 },
+
+  section: { padding: "16px 16px 0" },
+  helpText: { color: COLORS.inkSoft, fontSize: 14, lineHeight: 1.5 },
+  h2: { fontSize: 22, fontWeight: 700, margin: "4px 0" },
+
+  nameGrid: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  nameChip: { border: `1px solid ${COLORS.line}`, background: COLORS.card, borderRadius: 20, padding: "8px 14px", fontSize: 14 },
+  addRow: { display: "flex", gap: 8, marginTop: 16 },
+  input: { flex: 1, border: `1px solid ${COLORS.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, background: COLORS.card, color: COLORS.ink, width: "100%" },
+  primaryBtnSmall: { border: "none", background: COLORS.ink, color: COLORS.bg, borderRadius: 10, padding: "10px 16px", fontWeight: 600, fontSize: 14 },
+  primaryBtn: { width: "100%", border: "none", background: COLORS.ink, color: COLORS.bg, borderRadius: 12, padding: "14px 16px", fontWeight: 700, fontSize: 15, marginTop: 8 },
+  secondaryBtn: { width: "100%", border: `1px solid ${COLORS.line}`, background: COLORS.card, color: COLORS.ink, borderRadius: 10, padding: "10px 16px", fontWeight: 600, fontSize: 14, marginTop: 8 },
+
+  centerMsg: { textAlign: "center", padding: "60px 24px" },
+
+  questionBlock: { marginBottom: 24 },
+  qLabel: { fontWeight: 700, fontSize: 15, marginBottom: 10 },
+  qMax: { fontWeight: 400, color: COLORS.inkSoft, fontSize: 13 },
+  peopleGrid: { display: "flex", flexWrap: "wrap", gap: 8 },
+  personChip: { border: `1px solid ${COLORS.line}`, background: COLORS.card, borderRadius: 20, padding: "9px 14px", fontSize: 14, color: COLORS.ink },
+  personChipWant: { background: COLORS.wantBg, border: `1px solid ${COLORS.want}`, color: "#8C3B25" },
+  personChipAvoid: { background: COLORS.avoidBg, border: `1px solid ${COLORS.avoid}`, color: "#7A2A27" },
+  personChipDimmed: { opacity: 0.35 },
+  priorityHint: { fontSize: 12, color: COLORS.inkSoft, marginBottom: 10, lineHeight: 1.4 },
+  priorityBadge: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", background: COLORS.want, color: "#fff", fontSize: 10, fontWeight: 700, marginRight: 6 },
+
+  tabRow: { display: "flex", gap: 6, padding: "12px 16px 0" },
+  tabBtn: { flex: 1, border: `1px solid ${COLORS.line}`, background: COLORS.card, borderRadius: 10, padding: "9px 8px", fontSize: 13, fontWeight: 600, color: COLORS.inkSoft },
+  tabBtnActive: { background: COLORS.ink, color: COLORS.bg, borderColor: COLORS.ink },
+
+  statRow: { display: "flex", gap: 10, marginBottom: 20 },
+  scoreRow: { display: "flex", gap: 10, marginBottom: 12 },
+  statBox: { flex: 1, background: COLORS.card, border: `1px solid ${COLORS.line}`, borderRadius: 12, padding: "12px 10px", textAlign: "center" },
+  statValue: { fontSize: 22, fontWeight: 700 },
+  statLabel: { fontSize: 11, color: COLORS.inkSoft, marginTop: 2 },
+
+  fieldBlock: { marginBottom: 20 },
+  fieldLabel: { display: "block", fontWeight: 700, fontSize: 14, marginBottom: 8 },
+  hint: { fontSize: 12, color: COLORS.inkSoft, marginTop: 6, marginBottom: 6 },
+
+  listWrap: { marginTop: 8 },
+  listRow: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", borderBottom: `1px solid ${COLORS.line}`, fontSize: 14 },
+  badge: { fontSize: 11, fontWeight: 700, borderRadius: 8, padding: "3px 8px" },
+  removeBtn: { border: "none", background: "transparent", color: COLORS.avoid, fontSize: 14, width: 24 },
+
+  tablesGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 },
+  tableCard: { background: COLORS.card, border: `1px solid ${COLORS.line}`, borderRadius: 14, padding: 10 },
+  tableCardLabel: { fontSize: 10, fontWeight: 700, color: COLORS.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 },
+  tableSeats: { display: "flex", flexDirection: "column", gap: 6 },
+  seatBtn: { border: `1px solid ${COLORS.line}`, background: COLORS.bg, borderRadius: 8, padding: "10px 8px", fontSize: 13, textAlign: "left", position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" },
+  seatBtnSelected: { border: `2px solid ${COLORS.ink}` },
+  seatBtnWant: { background: COLORS.wantBg },
+  seatBtnAvoid: { background: COLORS.avoidBg },
+  seatIcon: { fontSize: 12 },
+};
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
