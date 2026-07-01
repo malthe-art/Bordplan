@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Test</title>
+<style>
+body{font-family:sans-serif;background:#FAF6EE;padding:40px;color:#2F4538}
+</style>
+</head>
+<body>
+<div id="app">CSS virker, men JavaScript er ikke kørt endnu...</div>
+<script>
+try {
+  document.getElementById("app").innerHTML = "<h1>✓ JavaScript virker!</h1><p>Appen er klar til at loade.</p>";
+} catch(e) {
+  document.getElementById("app").innerHTML = "Fejl: " + e.message;
+}
+</script>
+</body>
+</html>
