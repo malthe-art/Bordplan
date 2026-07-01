@@ -1,13 +1,627 @@
 <!DOCTYPE html>
-<html>
+<html lang="da">
 <head>
 <meta charset="UTF-8"/>
-<title>Test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no"/>
+<title>Bordplan</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#FAF6EE;color:#2F4538;min-height:100vh}
+button{cursor:pointer;font-family:inherit;border:none;background:none}
+button:disabled{opacity:.4;cursor:not-allowed}
+input,textarea{font-family:inherit;width:100%;border:1px solid #E4DCC8;border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;color:#2F4538}
+textarea{resize:none}
+
+/* Layout */
+.screen{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:40px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px;position:sticky;top:0;background:#FAF6EE;z-index:5;border-bottom:1px solid #E4DCC8}
+.topbar-title{font-weight:700;font-size:16px}
+.back-btn{font-size:20px;width:32px;color:#2F4538}
+.section{padding:16px}
+
+/* Home */
+.home-wrap{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:32px 20px;max-width:480px;margin:0 auto}
+.kicker{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#D9A441;font-weight:700;margin-bottom:8px}
+h1{font-size:32px;margin-bottom:12px;line-height:1.1}
+.lede{font-size:15px;color:#5C6B5E;line-height:1.5;margin-bottom:32px}
+.home-cards{display:flex;flex-direction:column;gap:14px}
+.big-card{border:1px solid #E4DCC8;background:#fff;border-radius:16px;padding:24px 20px;text-align:left;display:flex;flex-direction:column;gap:4px;width:100%}
+.big-card.dark{background:#2F4538;color:#FAF6EE}
+.big-card-icon{font-size:22px;margin-bottom:6px}
+.big-card-title{font-size:19px;font-weight:700}
+.big-card-sub{font-size:13px;color:#5C6B5E}
+.big-card.dark .big-card-sub{color:#C9D4CB}
+.big-card.dark .big-card-title{color:#FAF6EE}
+
+/* Code entry */
+.code-box{border:1px solid #E4DCC8;background:#2F4538;border-radius:16px;padding:24px 20px}
+.code-box-title{font-size:16px;font-weight:700;color:#FAF6EE;margin-bottom:10px}
+.code-error{color:#F0A8A0;font-size:13px;margin-bottom:8px}
+.code-btns{display:flex;gap:8px;margin-top:8px}
+.btn-small{border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px}
+.btn-primary-small{background:#FAF6EE;color:#2F4538}
+.btn-secondary-small{background:transparent;border:1px solid #E4DCC8;color:#FAF6EE}
+
+/* Buttons */
+.btn-primary{width:100%;background:#2F4538;color:#FAF6EE;border-radius:12px;padding:14px 16px;font-weight:700;font-size:15px;margin-top:8px}
+.btn-secondary{width:100%;border:1px solid #E4DCC8;background:#fff;color:#2F4538;border-radius:10px;padding:10px 16px;font-weight:600;font-size:14px;margin-top:8px}
+
+/* Tabs */
+.tab-row{display:flex;gap:6px;padding:12px 16px 0}
+.tab-btn{flex:1;border:1px solid #E4DCC8;background:#fff;border-radius:10px;padding:9px 8px;font-size:13px;font-weight:600;color:#5C6B5E}
+.tab-btn.active{background:#2F4538;color:#FAF6EE;border-color:#2F4538}
+
+/* Name grid */
+.name-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.name-chip{border:1px solid #E4DCC8;background:#fff;border-radius:20px;padding:8px 14px;font-size:14px;color:#2F4538}
+.add-row{display:flex;gap:8px;margin-top:16px}
+.add-row input{flex:1;width:auto}
+
+/* People grid */
+.people-grid{display:flex;flex-wrap:wrap;gap:8px}
+.person-chip{border:1px solid #E4DCC8;background:#fff;border-radius:20px;padding:9px 14px;font-size:14px;color:#2F4538;display:inline-flex;align-items:center;gap:6px}
+.person-chip.want{background:#FBE6DD;border-color:#E8836B;color:#8C3B25}
+.person-chip.avoid{background:#F7DEDC;border-color:#C75450;color:#7A2A27}
+.person-chip.dimmed{opacity:.35}
+.priority-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#E8836B;color:#fff;font-size:10px;font-weight:700;flex-shrink:0}
+
+/* Question blocks */
+.q-block{margin-bottom:24px}
+.q-label{font-weight:700;font-size:15px;margin-bottom:10px}
+.q-max{font-weight:400;color:#5C6B5E;font-size:13px}
+.priority-hint{font-size:12px;color:#5C6B5E;margin-bottom:10px;line-height:1.4}
+
+/* Stats */
+.stat-row{display:flex;gap:10px;margin-bottom:20px}
+.stat-box{flex:1;background:#fff;border:1px solid #E4DCC8;border-radius:12px;padding:12px 10px;text-align:center}
+.stat-value{font-size:22px;font-weight:700}
+.stat-label{font-size:11px;color:#5C6B5E;margin-top:2px}
+
+/* Fields */
+.field-block{margin-bottom:20px}
+.field-label{display:block;font-weight:700;font-size:14px;margin-bottom:8px}
+.hint{font-size:12px;color:#5C6B5E;margin-top:6px}
+
+/* List */
+.list-wrap{margin-top:8px}
+.list-row{display:flex;align-items:center;justify-content:space-between;padding:10px 4px;border-bottom:1px solid #E4DCC8;font-size:14px}
+.badge{font-size:11px;font-weight:700;border-radius:8px;padding:3px 8px}
+.badge.answered{background:#E4EEE0;color:#3C6B3A}
+.badge.missing{background:#F2EFE6;color:#5C6B5E}
+.remove-btn{color:#C75450;font-size:14px;width:24px}
+
+/* Tables grid */
+.tables-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.table-card{background:#fff;border:1px solid #E4DCC8;border-radius:14px;padding:10px}
+.table-card-label{font-size:10px;font-weight:700;color:#D9A441;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.table-seats{display:flex;flex-direction:column;gap:6px}
+.seat-btn{border:1px solid #E4DCC8;background:#FAF6EE;border-radius:8px;padding:10px 8px;font-size:13px;text-align:left;display:flex;justify-content:space-between;align-items:center;width:100%}
+.seat-btn.selected{border:2px solid #2F4538}
+.seat-btn.want{background:#FBE6DD}
+.seat-btn.avoid{background:#F7DEDC}
+.seat-icon{font-size:12px}
+
+/* Center msg */
+.center-msg{text-align:center;padding:60px 24px}
+.center-icon{font-size:48px;margin-bottom:12px}
+.h2{font-size:22px;font-weight:700;margin-bottom:8px}
+.help-text{color:#5C6B5E;font-size:14px;line-height:1.5}
+
+/* Share box */
+.share-box{background:#E4EEE0;border-radius:12px;padding:12px;margin-bottom:16px;word-break:break-all;font-size:13px;color:#2F4538;line-height:1.5}
+
+/* Hidden */
+.hidden{display:none!important}
+</style>
 </head>
 <body>
-<div id="a">Venter...</div>
+
+<div id="app"></div>
+
 <script>
-document.getElementById("a").textContent = "JS virker!";
+// ============================================================
+// LOCAL STORAGE
+// ============================================================
+const STORAGE_KEY = "bordplan_data";
+
+const DEFAULT_DATA = {
+  names: [],
+  tableCount: 12,
+  requests: {},
+  plan: null,
+  teacherCode: "1234"
+};
+
+let state = JSON.parse(JSON.stringify(DEFAULT_DATA));
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) state = { ...DEFAULT_DATA, ...JSON.parse(saved) };
+  } catch(e) {}
+}
+
+function saveBlob() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function applyData(data) {
+  state = {
+    names: data.names || [],
+    tableCount: data.tableCount ?? 12,
+    requests: data.requests || {},
+    plan: data.plan ?? null,
+    teacherCode: data.teacherCode || "1234"
+  };
+}
+
+// ============================================================
+// APP STATE
+// ============================================================
+let currentView = "loading"; // loading | home | student | teacher
+let studentId = null;
+let wantsList = [];
+let avoidsList = [];
+let studentSubmitted = false;
+let teacherTab = "overview"; // overview | names | plan | settings
+let selectedSeat = null; // {tableIdx, seatIdx}
+let codeError = false;
+let showCodeEntry = false;
+let codeMsg = null;
+
+// ============================================================
+// UTILS
+// ============================================================
+function uid() { return Math.random().toString(36).slice(2,9); }
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+function btn(label, cls, onClick) {
+  const b = document.createElement("button");
+  b.className = cls;
+  b.innerHTML = label;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function input(placeholder, type) {
+  const i = document.createElement("input");
+  i.placeholder = placeholder;
+  i.type = type || "text";
+  return i;
+}
+
+// ============================================================
+// ALGORITHM
+// ============================================================
+function computeSeating() {
+  const ids = state.names.map(n=>n.id);
+  const shuffled = [...ids].sort(()=>Math.random()-.5);
+  let tables = [];
+  for (let i=0;i<state.tableCount;i++) {
+    tables.push([shuffled[i*2]??null, shuffled[i*2+1]??null]);
+  }
+
+  function pairScore(a,b) {
+    if (!a||!b) return 0;
+    let s=0;
+    const ra=state.requests[a], rb=state.requests[b];
+    const pts=[6,4,2];
+    const ai=ra?.wants?.indexOf(b)??-1;
+    if (ai!==-1) s+=pts[ai]??2;
+    const bi=rb?.wants?.indexOf(a)??-1;
+    if (bi!==-1) s+=pts[bi]??2;
+    if (ra?.avoids?.includes(b)) s-=12;
+    if (rb?.avoids?.includes(a)) s-=12;
+    return s;
+  }
+
+  let improved=true, itr=0;
+  while (improved && itr<4000) {
+    improved=false; itr++;
+    for (let t1=0;t1<tables.length;t1++) {
+      for (let s1=0;s1<2;s1++) {
+        for (let t2=t1;t2<tables.length;t2++) {
+          for (let s2=(t2===t1?s1+1:0);s2<2;s2++) {
+            const before = pairScore(tables[t1][0],tables[t1][1]) + (t2!==t1?pairScore(tables[t2][0],tables[t2][1]):0);
+            const tmp=tables[t1][s1]; tables[t1][s1]=tables[t2][s2]; tables[t2][s2]=tmp;
+            const after = pairScore(tables[t1][0],tables[t1][1]) + (t2!==t1?pairScore(tables[t2][0],tables[t2][1]):0);
+            if (after>before) { improved=true; }
+            else { const t=tables[t1][s1]; tables[t1][s1]=tables[t2][s2]; tables[t2][s2]=t; }
+          }
+        }
+      }
+    }
+  }
+  return tables;
+}
+
+function scorePlan() {
+  let wantsTotal=0, wantsMet=0, avoidsBroken=0;
+  Object.entries(state.requests).forEach(([id,req])=>{
+    const table = state.plan?.find(t=>t.includes(id));
+    const mate = table?.find(x=>x!==id);
+    (req.wants||[]).forEach(w=>{ wantsTotal++; if(mate===w) wantsMet++; });
+    (req.avoids||[]).forEach(a=>{ if(mate===a) avoidsBroken++; });
+  });
+  return {wantsTotal,wantsMet,avoidsBroken};
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+
+  if (currentView==="loading") { app.innerHTML='<div style="padding:40px;color:#5C6B5E">Henter…</div>'; return; }
+  if (currentView==="error") { app.innerHTML='<div style="padding:40px;color:#C75450">Kunne ikke forbinde. Tjek din internetforbindelse og genindlæs siden.</div>'; return; }
+  if (currentView==="home") { app.appendChild(renderHome()); return; }
+  if (currentView==="student") { app.appendChild(renderStudent()); return; }
+  if (currentView==="teacher") { app.appendChild(renderTeacher()); return; }
+}
+
+// ---- HOME ----
+function renderHome() {
+  const wrap = el("div","home-wrap");
+
+  const header = el("div","home-header");
+  header.appendChild(el("div","kicker","Bordplan"));
+  const h1 = el("h1","","Find din plads");
+  header.appendChild(h1);
+  header.appendChild(el("p","lede","Skriv hvem du har lyst til at sidde ved siden af — og hvem der måske skal sidde et andet sted. Læreren laver bordplanen ud fra alle ønsker."));
+  wrap.appendChild(header);
+
+  const cards = el("div","home-cards");
+
+  // Student card
+  const studentCard = btn('<div class="big-card-icon">✎</div><div class="big-card-title">Jeg er elev</div><div class="big-card-sub">Skriv dine ønsker</div>', "big-card", ()=>{
+    currentView="student";
+    studentId=null; wantsList=[]; avoidsList=[]; studentSubmitted=false;
+    render();
+  });
+  cards.appendChild(studentCard);
+
+  // Teacher card / code entry
+  if (!showCodeEntry) {
+    const teacherCard = btn('<div class="big-card-icon">☰</div><div class="big-card-title">Jeg er lærer</div><div class="big-card-sub">Kræver kode</div>', "big-card dark", ()=>{
+      showCodeEntry=true; render();
+    });
+    cards.appendChild(teacherCard);
+  } else {
+    const codeBox = el("div","code-box");
+    codeBox.appendChild(el("div","code-box-title","Indtast lærer-kode"));
+    const codeInput = input("Kode","password");
+    codeBox.appendChild(codeInput);
+    if (codeError) codeBox.appendChild(el("div","code-error","Forkert kode, prøv igen."));
+    const btnRow = el("div","code-btns");
+    btnRow.appendChild(btn("Log ind","btn-small btn-primary-small",()=>{
+      if (codeInput.value.trim()===state.teacherCode) {
+        showCodeEntry=false; codeError=false;
+        currentView="teacher"; teacherTab="overview";
+        render();
+      } else { codeError=true; render(); }
+    }));
+    btnRow.appendChild(btn("Annuller","btn-small btn-secondary-small",()=>{
+      showCodeEntry=false; codeError=false; render();
+    }));
+    codeBox.appendChild(btnRow);
+    cards.appendChild(codeBox);
+  }
+
+  wrap.appendChild(cards);
+  return wrap;
+}
+
+// ---- STUDENT ----
+function renderStudent() {
+  const screen = el("div","screen");
+  screen.appendChild(topBar("← ", !studentId?"Hvem er du?": studentSubmitted?"Sendt!": `Hej, ${state.names.find(n=>n.id===studentId)?.name}`, ()=>{
+    currentView="home"; render();
+  }));
+
+  const section = el("div","section");
+
+  if (!studentId) {
+    section.appendChild(el("p","help-text","Find dit navn på listen, eller skriv det hvis det ikke er der."));
+    const grid = el("div","name-grid");
+    state.names.forEach(n=>{
+      grid.appendChild(btn(n.name,"name-chip",()=>{ studentId=n.id; wantsList=state.requests[n.id]?.wants||[]; avoidsList=state.requests[n.id]?.avoids||[]; render(); }));
+    });
+    section.appendChild(grid);
+
+    const addRow = el("div","add-row");
+    const nameInput = input("Skriv dit navn");
+    addRow.appendChild(nameInput);
+    addRow.appendChild(btn("Fortsæt","btn-small btn-primary-small",()=>{
+      const trimmed = nameInput.value.trim();
+      if (!trimmed) return;
+      const existing = state.names.find(n=>n.name.toLowerCase()===trimmed.toLowerCase());
+      if (existing) { studentId=existing.id; wantsList=state.requests[existing.id]?.wants||[]; avoidsList=state.requests[existing.id]?.avoids||[]; render(); return; }
+      const id=uid();
+      state.names.push({id,name:trimmed});
+      studentId=id; wantsList=[]; avoidsList=[];
+      saveBlob();
+      render();
+    }));
+    section.appendChild(addRow);
+  } else if (studentSubmitted) {
+    const msg = el("div","center-msg");
+    msg.appendChild(el("div","center-icon","✓"));
+    msg.appendChild(el("div","h2",`Tak, ${state.names.find(n=>n.id===studentId)?.name}!`));
+    msg.appendChild(el("p","help-text","Dine ønsker er gemt. Læreren laver bordplanen, når alle har svaret."));
+    msg.appendChild(btn("Ret mine svar","btn-secondary",()=>{ studentSubmitted=false; render(); }));
+    section.appendChild(msg);
+  } else {
+    const others = state.names.filter(n=>n.id!==studentId);
+    if (others.length===0) {
+      section.appendChild(el("div","hint","Der er endnu ikke tilføjet andre elever. Spørg din lærer om at tilføje hele klassen først."));
+    } else {
+      // Wants
+      const qWant = el("div","q-block");
+      qWant.appendChild(el("div","q-label",'Hvem vil du gerne sidde tæt på? <span class="q-max">(vælg op til 3, i den orden du har mest lyst)</span>'));
+      if (wantsList.length>0) {
+        const hint = el("div","priority-hint",`1. ${state.names.find(n=>n.id===wantsList[0])?.name} er dit vigtigste ønske — tryk en valgt person igen for at fjerne den og vælge i en anden orden.`);
+        qWant.appendChild(hint);
+      }
+      const wantGrid = el("div","people-grid");
+      others.forEach(n=>{
+        const pri = wantsList.indexOf(n.id);
+        const chip = el("button");
+        chip.className = "person-chip" + (pri!==-1?" want":"") + (avoidsList.includes(n.id)?" dimmed":"");
+        chip.disabled = avoidsList.includes(n.id);
+        if (pri!==-1) chip.appendChild(el("span","priority-badge",String(pri+1)));
+        chip.appendChild(document.createTextNode(n.name));
+        chip.addEventListener("click",()=>{
+          avoidsList = avoidsList.filter(x=>x!==n.id);
+          if (wantsList.includes(n.id)) { wantsList=wantsList.filter(x=>x!==n.id); }
+          else if (wantsList.length<3) { wantsList.push(n.id); }
+          render();
+        });
+        wantGrid.appendChild(chip);
+      });
+      qWant.appendChild(wantGrid);
+      section.appendChild(qWant);
+
+      // Avoids
+      const qAvoid = el("div","q-block");
+      qAvoid.appendChild(el("div","q-label",'Er der nogen du ikke vil sidde ved siden af? <span class="q-max">(valgfrit)</span>'));
+      const avoidGrid = el("div","people-grid");
+      others.forEach(n=>{
+        const chip = el("button");
+        chip.className = "person-chip" + (avoidsList.includes(n.id)?" avoid":"") + (wantsList.includes(n.id)?" dimmed":"");
+        chip.disabled = wantsList.includes(n.id);
+        chip.appendChild(document.createTextNode(n.name));
+        chip.addEventListener("click",()=>{
+          wantsList = wantsList.filter(x=>x!==n.id);
+          if (avoidsList.includes(n.id)) { avoidsList=avoidsList.filter(x=>x!==n.id); }
+          else { avoidsList.push(n.id); }
+          render();
+        });
+        avoidGrid.appendChild(chip);
+      });
+      qAvoid.appendChild(avoidGrid);
+      section.appendChild(qAvoid);
+
+      section.appendChild(btn("Send mine ønsker","btn-primary",()=>{
+        state.requests[studentId]={wants:[...wantsList],avoids:[...avoidsList]};
+        saveBlob();
+        studentSubmitted=true;
+        render();
+      }));
+    }
+  }
+
+  screen.appendChild(section);
+  return screen;
+}
+
+// ---- TEACHER ----
+function renderTeacher() {
+  const screen = el("div","screen");
+  screen.appendChild(topBar("← ","Lærer-visning",()=>{ currentView="home"; render(); }));
+
+  // Tabs
+  const tabRow = el("div","tab-row");
+  [["overview","Status"],["names","Elever"],["plan","Bordplan"],["settings","Kode"]].forEach(([key,label])=>{
+    tabRow.appendChild(btn(label,"tab-btn"+(teacherTab===key?" active":""),()=>{ teacherTab=key; render(); }));
+  });
+  screen.appendChild(tabRow);
+
+  const section = el("div","section");
+
+  if (teacherTab==="overview") {
+    // Info
+    const infoLabel = el("div","field-block");
+    infoLabel.appendChild(el("label","field-label","Sådan bruger du appen"));
+    infoLabel.appendChild(el("div","hint","Data gemmes på denne telefon. Send telefonen rundt i klassen, så hver elev kan trykke \"Jeg er elev\" og udfylde deres ønsker. Eller tilføj navne og ønsker manuelt under \"Elever\"."));
+    section.appendChild(infoLabel);
+
+    // Stats
+    const statRow = el("div","stat-row");
+    [[state.names.length,"Elever"],[Object.keys(state.requests).length,"Har svaret"],[state.tableCount,"Borde"]].forEach(([v,l])=>{
+      const box=el("div","stat-box");
+      box.appendChild(el("div","stat-value",String(v)));
+      box.appendChild(el("div","stat-label",l));
+      statRow.appendChild(box);
+    });
+    section.appendChild(statRow);
+
+    // Table count
+    const tcBlock = el("div","field-block");
+    tcBlock.appendChild(el("label","field-label","Antal borde (2 pladser pr. bord)"));
+    const tcInput = input("","number");
+    tcInput.value = state.tableCount;
+    tcInput.min = 1;
+    tcInput.addEventListener("input",()=>{ state.tableCount=Math.max(1,parseInt(tcInput.value)||1); saveBlob(); });
+    tcBlock.appendChild(tcInput);
+    tcBlock.appendChild(el("div","hint",`Plads til ${state.tableCount*2} elever — du har ${state.names.length} på listen.`));
+    section.appendChild(tcBlock);
+
+    section.appendChild(btn(state.plan?"Lav bordplan igen":"Lav bordplan","btn-primary",()=>{
+      if (state.names.length===0) return;
+      state.plan=computeSeating();
+      saveBlob();
+      teacherTab="plan";
+      selectedSeat=null;
+      render();
+    }));
+    if (state.names.length===0) section.appendChild(el("div","hint","Tilføj elever under "Elever" først."));
+  }
+
+  else if (teacherTab==="names") {
+    const bulkBlock = el("div","field-block");
+    bulkBlock.appendChild(el("label","field-label","Tilføj navne (ét pr. linje)"));
+    const ta = document.createElement("textarea");
+    ta.rows=4; ta.placeholder="Anna\nMads\nSofie...";
+    bulkBlock.appendChild(ta);
+    bulkBlock.appendChild(btn("Tilføj navne","btn-secondary",()=>{
+      const lines=ta.value.split("\n").map(l=>l.trim()).filter(Boolean);
+      const existing=new Set(state.names.map(n=>n.name.toLowerCase()));
+      lines.filter(l=>!existing.has(l.toLowerCase())).forEach(l=>state.names.push({id:uid(),name:l}));
+      saveBlob(); render();
+    }));
+    section.appendChild(bulkBlock);
+
+    const listWrap=el("div","list-wrap");
+    state.names.forEach(n=>{
+      const row=el("div","list-row");
+      row.appendChild(document.createTextNode(n.name));
+      const right=el("div","",`<span class="badge ${state.requests[n.id]?"answered":"missing"}">${state.requests[n.id]?"Svaret":"Mangler"}</span>`);
+      right.style.display="flex"; right.style.alignItems="center"; right.style.gap="8px";
+      right.appendChild(btn("✕","remove-btn",()=>{
+        state.names=state.names.filter(x=>x.id!==n.id);
+        delete state.requests[n.id];
+        Object.values(state.requests).forEach(r=>{
+          r.wants=r.wants.filter(x=>x!==n.id);
+          r.avoids=r.avoids.filter(x=>x!==n.id);
+        });
+        saveBlob(); render();
+      }));
+      row.appendChild(right);
+      listWrap.appendChild(row);
+    });
+    if (state.names.length===0) listWrap.appendChild(el("div","hint","Ingen elever tilføjet endnu."));
+    section.appendChild(listWrap);
+  }
+
+  else if (teacherTab==="plan") {
+    if (!state.plan) {
+      section.appendChild(el("div","hint","Ingen bordplan endnu — gå til "Status" og tryk "Lav bordplan"."));
+    } else {
+      const sc=scorePlan();
+      const scoreRow=el("div","stat-row");
+      [[`${sc.wantsMet}/${sc.wantsTotal}`,"Ønsker opfyldt"],[sc.avoidsBroken,"Konflikter"]].forEach(([v,l])=>{
+        const box=el("div","stat-box");
+        box.appendChild(el("div","stat-value",String(v)));
+        box.appendChild(el("div","stat-label",l));
+        scoreRow.appendChild(box);
+      });
+      section.appendChild(scoreRow);
+      section.appendChild(el("div","hint","Tryk på en elev og derefter en anden for at bytte plads."));
+
+      const nameById={};
+      state.names.forEach(n=>nameById[n.id]=n.name);
+
+      const grid=el("div","tables-grid");
+      state.plan.forEach((table,ti)=>{
+        const card=el("div","table-card");
+        card.appendChild(el("div","table-card-label",`Bord ${ti+1}`));
+        const seats=el("div","table-seats");
+        [0,1].forEach(si=>{
+          const id=table[si];
+          const req=id?state.requests[id]:null;
+          const mate=id?table.find(x=>x!==id):null;
+          const wantIdx=req?.wants?.indexOf(mate)??-1;
+          const isWant=wantIdx!==-1;
+          const isAvoid=!isWant&&req?.avoids?.includes(mate);
+          const isSelected=selectedSeat&&selectedSeat.tableIdx===ti&&selectedSeat.seatIdx===si;
+
+          const s=el("button","seat-btn"+(isSelected?" selected":"")+(isWant?" want":"")+(isAvoid?" avoid":""));
+          s.appendChild(document.createTextNode(id?nameById[id]:"—"));
+          if (isWant) s.appendChild(el("span","seat-icon",`♥${wantIdx+1}`));
+          if (isAvoid) s.appendChild(el("span","seat-icon","!"));
+          s.addEventListener("click",()=>{
+            if (!id) return;
+            if (!selectedSeat) { selectedSeat={tableIdx:ti,seatIdx:si}; render(); return; }
+            if (selectedSeat.tableIdx===ti&&selectedSeat.seatIdx===si) { selectedSeat=null; render(); return; }
+            // swap
+            const a=state.plan[selectedSeat.tableIdx][selectedSeat.seatIdx];
+            state.plan[selectedSeat.tableIdx][selectedSeat.seatIdx]=state.plan[ti][si];
+            state.plan[ti][si]=a;
+            selectedSeat=null;
+            saveBlob(); render();
+          });
+          seats.appendChild(s);
+        });
+        card.appendChild(seats);
+        grid.appendChild(card);
+      });
+      section.appendChild(grid);
+    }
+  }
+
+  else if (teacherTab==="settings") {
+    section.appendChild(el("div","field-block",`<label class="field-label">Skift lærer-kode</label><div class="hint">Skriv den nuværende kode og derefter den nye kode.</div>`));
+    const oldInput=input("Nuværende kode","password");
+    const newInput=input("Ny kode","password");
+    const oldBlock=el("div","field-block");
+    oldBlock.appendChild(el("label","field-label","Nuværende kode"));
+    oldBlock.appendChild(oldInput);
+    section.appendChild(oldBlock);
+    const newBlock=el("div","field-block");
+    newBlock.appendChild(el("label","field-label","Ny kode"));
+    newBlock.appendChild(newInput);
+    section.appendChild(newBlock);
+    if (codeMsg) {
+      section.appendChild(el("div","",`<div style="font-size:13px;font-weight:600;margin-bottom:12px;color:${codeMsg.type==="error"?"#C75450":"#3C6B3A"}">${codeMsg.text}</div>`));
+    }
+    section.appendChild(btn("Skift kode","btn-primary",()=>{
+      if (oldInput.value.trim()!==state.teacherCode) { codeMsg={type:"error",text:"Den gamle kode er forkert."}; render(); return; }
+      if (!newInput.value.trim()) { codeMsg={type:"error",text:"Skriv en ny kode."}; render(); return; }
+      state.teacherCode=newInput.value.trim();
+      codeMsg={type:"success",text:"Koden er ændret."};
+      saveBlob(); render();
+    }));
+  }
+
+  screen.appendChild(section);
+  return screen;
+}
+
+function topBar(backLabel, title, onBack) {
+  const bar=el("div","topbar");
+  bar.appendChild(btn(backLabel,"back-btn",onBack));
+  bar.appendChild(el("div","topbar-title",title));
+  bar.appendChild(el("div","","")); // spacer
+  return bar;
+}
+
+// ============================================================
+// INIT
+// ============================================================
+window.onerror = function(msg, src, line) {
+  document.getElementById("app").innerHTML =
+    '<div style="padding:24px;color:#C75450;font-size:14px">Fejl: ' + msg + ' (linje ' + line + ')</div>';
+};
+
+function init() {
+  try {
+    loadState();
+    currentView = "home";
+    render();
+  } catch(e) {
+    document.getElementById("app").innerHTML =
+      '<div style="padding:24px;color:#C75450;font-size:14px">Startfejl: ' + e.message + '</div>';
+  }
+}
+
+init();
 </script>
 </body>
 </html>
