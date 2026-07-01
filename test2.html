@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Bordplan test</title>
+<style>
+body{font-family:sans-serif;background:#FAF6EE;padding:40px;color:#2F4538}
+button{background:#2F4538;color:#FAF6EE;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer;margin-top:16px;display:block}
+</style>
+</head>
+<body>
+<div id="app">Starter...</div>
+<script>
+var app = document.getElementById("app");
+app.innerHTML = "<h1>JavaScript virker!</h1>";
+var b = document.createElement("button");
+b.textContent = "Jeg er elev";
+b.onclick = function() { app.innerHTML = "<h2>Klik virkede!</h2>"; };
+app.appendChild(b);
+</script>
+</body>
+</html>
