@@ -605,10 +605,20 @@ function topBar(backLabel, title, onBack) {
 // ============================================================
 // INIT
 // ============================================================
+window.onerror = function(msg, src, line) {
+  document.getElementById("app").innerHTML =
+    '<div style="padding:24px;color:#C75450;font-size:14px">Fejl: ' + msg + ' (linje ' + line + ')</div>';
+};
+
 function init() {
-  loadState();
-  currentView="home";
-  render();
+  try {
+    loadState();
+    currentView = "home";
+    render();
+  } catch(e) {
+    document.getElementById("app").innerHTML =
+      '<div style="padding:24px;color:#C75450;font-size:14px">Startfejl: ' + e.message + '</div>';
+  }
 }
 
 init();
